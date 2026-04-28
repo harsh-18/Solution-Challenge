@@ -43,7 +43,7 @@ app.post('/api/gemini/extract', async (req, res) => {
     const { rawText, location } = req.body;
 
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       generationConfig: {
         temperature: 0.1,
         responseMimeType: "application/json",
@@ -91,7 +91,7 @@ app.post('/api/gemini/brief', async (req, res) => {
     const { task, volunteer } = req.body;
 
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       generationConfig: {
         temperature: 0.2,
         responseMimeType: "application/json",
@@ -153,7 +153,7 @@ app.post('/api/gemini/impact', async (req, res) => {
 
   try {
     const { tasksContext } = req.body;
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     
     const prompt = `Based on the following disaster relief tasks, write a brief, professional 3-sentence impact summary for the coordinator dashboard. Highlight key successes, active bottlenecks, and critical areas.
     
