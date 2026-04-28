@@ -128,9 +128,9 @@ export default function MapView() {
             onLoad={onLoad}
             onUnmount={onUnmount}
             options={{
-              styles: mapStyle,
-              disableDefaultUI: true,
               zoomControl: true,
+              streetViewControl: true,
+              mapTypeControl: true,
             }}
           >
             {/* Task Markers */}

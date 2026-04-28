@@ -4,16 +4,19 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
-# Pass in build-time arguments for environment variables
-ARG VITE_GEMINI_API_KEY
+# We only bake the Google Maps API key into the frontend because it must be loaded in the browser
 ARG VITE_GOOGLE_MAPS_API_KEY
-ENV VITE_GEMINI_API_KEY=$VITE_GEMINI_API_KEY
 ENV VITE_GOOGLE_MAPS_API_KEY=$VITE_GOOGLE_MAPS_API_KEY
 RUN npm run build
 
 # Production environment
-FROM nginx:alpine
-COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm install --omit=dev
+COPY --from=build /app/dist ./dist
+COPY server ./server
+COPY .env ./
 EXPOSE 8080
-CMD ["nginx", "-g", "daemon off;"]
+ENV NODE_ENV=production
+CMD ["npm", "start"]
