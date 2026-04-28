@@ -4,9 +4,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
-# We only bake the Google Maps API key into the frontend because it must be loaded in the browser
-ARG VITE_GOOGLE_MAPS_API_KEY
-ENV VITE_GOOGLE_MAPS_API_KEY=$VITE_GOOGLE_MAPS_API_KEY
+# Maps API key is set at build time (it's a public browser key, not a secret)
+ENV VITE_GOOGLE_MAPS_API_KEY=AIzaSyCifu2guK74ZFxS0jM7K3Deon_82nsDB-s
 RUN npm run build
 
 # Production environment
