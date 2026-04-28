@@ -1,6 +1,6 @@
 // ============================================================
 // ReliefSetu — Mock AI Service (Demo Mode)
-// Simulates Vertex AI Gemini responses
+// Simulates Gemini API responses
 // ============================================================
 
 import { ExtractedNeed, Urgency, GeoLocation, VolunteerMatch, MatchReason, Volunteer, Task, TaskBrief, ImpactSummary } from '@/types/models'

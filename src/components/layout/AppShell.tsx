@@ -110,7 +110,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="p-4 mt-auto border-t border-surface-100 bg-[#fafafa]">
             <p className="text-[10px] font-bold text-surface-400 uppercase tracking-wider mb-2 ml-1">Google Spine</p>
             <div className="flex flex-col gap-1.5">
-              {['Vertex AI Gemini', 'Firestore', 'Cloud Run', 'Maps'].map(tech => (
+              {['Gemini 2.5 Flash', 'Cloud Run', 'Maps'].map(tech => (
                 <div key={tech} className="px-3 py-1.5 rounded-full bg-white border border-surface-200 text-[11px] font-bold text-surface-500 shadow-sm">
                   {tech}
                 </div>

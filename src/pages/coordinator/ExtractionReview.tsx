@@ -81,7 +81,7 @@ export default function ExtractionReview() {
       {/* Alert Banner */}
       <div className="bg-[#ebfbf6] border border-[#bbf0df] rounded-lg p-3 mb-6 flex items-center">
         <p className="text-xs font-bold text-[#0f766e]">
-          Vertex AI Gemini extracted the need and routed it to coordinator review.
+          Gemini 2.5 Flash extracted the need and routed it to coordinator review.
         </p>
       </div>
 
@@ -132,7 +132,7 @@ export default function ExtractionReview() {
         {/* Right Column: AI Output Details */}
         <div className="lg:col-span-2">
           <div className="mb-4">
-            <p className="text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-0.5">Vertex AI Gemini Output</p>
+            <p className="text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-0.5">Gemini AI Output</p>
             <h2 className="text-lg font-extrabold text-surface-900">Extraction details</h2>
           </div>
 

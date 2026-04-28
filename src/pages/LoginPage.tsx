@@ -180,7 +180,7 @@ export default function LoginPage() {
         {/* Footer */}
         <div className="mt-10 text-center">
           <p className="text-xs text-surface-400">
-            Powered by Vertex AI Gemini • Firebase • Cloud Run • Google Maps
+            Powered by Gemini 2.5 Flash • Cloud Run • Google Maps Platform
           </p>
           <p className="text-[10px] text-surface-300 mt-1">
             Smart Resource Allocation • Open Innovation Track
