@@ -21,15 +21,16 @@ import clsx from 'clsx'
 export default function VolunteerMatching() {
   const location = useLocation()
   const navigate = useNavigate()
+  const s = useStore()
 
-  const approvedTasks = store.getTasks().filter(t => t.status === TaskStatus.APPROVED)
+  const approvedTasks = s.getTasks().filter(t => t.status === TaskStatus.APPROVED)
   const initialTaskId = (location.state as any)?.taskId || approvedTasks[0]?.id
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(initialTaskId || null)
   const [matches, setMatches] = useState<VolunteerMatch[]>([])
   const [loading, setLoading] = useState(false)
   const [assigning, setAssigning] = useState<string | null>(null)
 
-  const selectedTask = selectedTaskId ? store.getTask(selectedTaskId) : null
+  const selectedTask = selectedTaskId ? s.getTask(selectedTaskId) : null
 
   useEffect(() => {
     if (selectedTask) {
@@ -89,12 +90,10 @@ export default function VolunteerMatching() {
       })
 
       setAssigning(null)
-      // Refresh
-      setSelectedTaskId(null)
-      setTimeout(() => {
-        const remaining = store.getTasks().filter(t => t.status === TaskStatus.APPROVED)
-        if (remaining.length > 0) setSelectedTaskId(remaining[0].id)
-      }, 100)
+      // Select next available approved task
+      const remaining = store.getTasks().filter(t => t.status === TaskStatus.APPROVED)
+      setSelectedTaskId(remaining.length > 0 ? remaining[0].id : null)
+      setMatches([])
     } catch (error: any) {
       console.error('Failed to assign volunteer:', error)
       alert(`Assignment Failed: ${error.message || 'Please check your Gemini API key and try again.'}`)

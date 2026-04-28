@@ -140,7 +140,7 @@ export default function ExtractionReview() {
             <div className="bg-white border border-surface-200 rounded-xl p-6 shadow-sm relative overflow-hidden">
               {/* Fake top badge */}
               <div className="absolute top-0 right-0 bg-[#ebfbf6] text-[#0f766e] px-3 py-1 rounded-bl-lg text-[10px] font-bold border-b border-l border-[#bbf0df]">
-                Gemini Pro 1.5
+                Gemini 2.5 Flash
               </div>
 
               {/* Title & Stats */}
