@@ -16,7 +16,7 @@ COPY package*.json ./
 RUN npm install --omit=dev
 COPY --from=build /app/dist ./dist
 COPY server ./server
-COPY .env ./
 EXPOSE 8080
 ENV NODE_ENV=production
+# Gemini API key is passed as a runtime env var on Cloud Run (not baked into the image)
 CMD ["npm", "start"]
