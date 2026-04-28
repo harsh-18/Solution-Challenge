@@ -16,7 +16,7 @@ export default function ExtractionReview() {
   const navigate = useNavigate()
 
   // Get reports that have been extracted but not yet made into tasks
-  const pendingReports = store.getReportsByStatus(ReportStatus.EXTRACTED)
+  const pendingReports = dataStore.getReportsByStatus(ReportStatus.EXTRACTED)
   const [selectedIdx, setSelectedIdx] = useState(0)
   const selectedReport = pendingReports[selectedIdx]
 
