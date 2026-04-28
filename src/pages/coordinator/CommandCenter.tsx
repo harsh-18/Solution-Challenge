@@ -33,7 +33,7 @@ export default function CommandCenter() {
       {/* Alert Banner */}
       <div className="bg-[#ebfbf6] border border-[#bbf0df] rounded-lg p-3 mb-6 flex items-center">
         <p className="text-xs font-bold text-[#0f766e]">
-          Demo mode active. Vertex AI and Firebase adapters are ready for cloud credentials.
+          Powered by Gemini 2.5 Flash, Google Maps Platform, and deployed on Google Cloud Run.
         </p>
       </div>
 
@@ -136,11 +136,11 @@ export default function CommandCenter() {
               </li>
               <li className="flex items-start gap-3">
                 <div className="w-1.5 h-1.5 rounded-full bg-[#14b8a6] mt-1.5 shrink-0"></div>
-                <p className="text-xs font-semibold text-surface-600 leading-relaxed">Firestore demo store loaded with India-specific seed data</p>
+                <p className="text-xs font-semibold text-surface-600 leading-relaxed">Local data store loaded with India-specific seed data</p>
               </li>
               <li className="flex items-start gap-3">
                 <div className="w-1.5 h-1.5 rounded-full bg-[#14b8a6] mt-1.5 shrink-0"></div>
-                <p className="text-xs font-semibold text-surface-600 leading-relaxed">Vertex AI Gemini demo adapter initialized</p>
+                <p className="text-xs font-semibold text-surface-600 leading-relaxed">Gemini 2.5 Flash API connected via secure backend</p>
               </li>
             </ul>
           </div>
