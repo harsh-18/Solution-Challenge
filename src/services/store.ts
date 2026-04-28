@@ -1,6 +1,6 @@
 // ============================================================
 // ReliefSetu — Data Store (Demo Mode)
-// In-memory reactive data store with seed data
+// In-memory reactive data store with local storage persistence
 // ============================================================
 
 import { Report, Task, Volunteer, Assignment, ImpactSummary, AuditLog, DuplicateCluster, ReportStatus, TaskStatus, AssignmentStatus } from '@/types/models'
@@ -9,14 +9,59 @@ import { SEED_REPORTS, SEED_TASKS, SEED_VOLUNTEERS, SEED_ASSIGNMENTS, SEED_IMPAC
 export type StoreListener = () => void
 
 class DataStore {
-  private reports: Report[] = [...SEED_REPORTS]
-  private tasks: Task[] = [...SEED_TASKS]
-  private volunteers: Volunteer[] = [...SEED_VOLUNTEERS]
-  private assignments: Assignment[] = [...SEED_ASSIGNMENTS]
+  private reports: Report[] = []
+  private tasks: Task[] = []
+  private volunteers: Volunteer[] = []
+  private assignments: Assignment[] = []
   private impactSummary: ImpactSummary = { ...SEED_IMPACT_SUMMARY }
-  private auditLogs: AuditLog[] = [...SEED_AUDIT_LOGS]
-  private duplicateClusters: DuplicateCluster[] = [...SEED_DUPLICATE_CLUSTERS]
+  private auditLogs: AuditLog[] = []
+  private duplicateClusters: DuplicateCluster[] = []
   private listeners: Set<StoreListener> = new Set()
+
+  constructor() {
+    this.loadFromStorage()
+  }
+
+  private loadFromStorage() {
+    try {
+      const saved = localStorage.getItem('reliefsetu_store')
+      if (saved) {
+        const data = JSON.parse(saved)
+        this.reports = data.reports || [...SEED_REPORTS]
+        this.tasks = data.tasks || [...SEED_TASKS]
+        this.volunteers = data.volunteers || [...SEED_VOLUNTEERS]
+        this.assignments = data.assignments || [...SEED_ASSIGNMENTS]
+        this.impactSummary = data.impactSummary || { ...SEED_IMPACT_SUMMARY }
+        this.auditLogs = data.auditLogs || [...SEED_AUDIT_LOGS]
+        this.duplicateClusters = data.duplicateClusters || [...SEED_DUPLICATE_CLUSTERS]
+        return
+      }
+    } catch (e) {
+      console.error('Failed to parse store data from local storage', e)
+    }
+
+    // Fallback to seed data
+    this.reports = [...SEED_REPORTS]
+    this.tasks = [...SEED_TASKS]
+    this.volunteers = [...SEED_VOLUNTEERS]
+    this.assignments = [...SEED_ASSIGNMENTS]
+    this.impactSummary = { ...SEED_IMPACT_SUMMARY }
+    this.auditLogs = [...SEED_AUDIT_LOGS]
+    this.duplicateClusters = [...SEED_DUPLICATE_CLUSTERS]
+  }
+
+  private saveToStorage() {
+    const data = {
+      reports: this.reports,
+      tasks: this.tasks,
+      volunteers: this.volunteers,
+      assignments: this.assignments,
+      impactSummary: this.impactSummary,
+      auditLogs: this.auditLogs,
+      duplicateClusters: this.duplicateClusters,
+    }
+    localStorage.setItem('reliefsetu_store', JSON.stringify(data))
+  }
 
   subscribe(listener: StoreListener) {
     this.listeners.add(listener)
@@ -24,6 +69,7 @@ class DataStore {
   }
 
   private notify() {
+    this.saveToStorage()
     this.listeners.forEach(l => l())
   }
 

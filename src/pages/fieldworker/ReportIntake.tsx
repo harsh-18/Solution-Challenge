@@ -7,31 +7,24 @@ import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { store } from '@/services/store'
-import { extractNeedFromReport } from '@/services/mockAi'
-import { Report, ReportStatus, Urgency, GeoLocation } from '@/types/models'
-import { UrgencyBadge, AIProcessingCard } from '@/components/ui'
+import { extractNeedFromReport } from '@/services/gemini'
+import { Report, ReportStatus, GeoLocation } from '@/types/models'
+import { AIProcessingCard } from '@/components/ui'
 import {
-  Send, MapPin, Camera, AlertTriangle, CheckCircle2, FileText,
-  ChevronDown, Mic, Globe, ArrowLeft
+  Send, ChevronDown, CheckCircle2, MapPin
 } from 'lucide-react'
 import clsx from 'clsx'
 
 const PRESET_LOCATIONS: GeoLocation[] = [
   { lat: 26.1542, lng: 85.8918, address: 'Laheriasarai, Darbhanga', area: 'Laheriasarai', city: 'Darbhanga', state: 'Bihar' },
   { lat: 28.6280, lng: 77.2950, address: 'Sector 8, Rohini, Delhi', area: 'Rohini Sector 8', city: 'Delhi', state: 'Delhi' },
-  { lat: 26.1445, lng: 91.7362, address: 'Panbazar, Guwahati', area: 'Panbazar', city: 'Guwahati', state: 'Assam' },
-  { lat: 28.5245, lng: 77.2066, address: 'Saket, New Delhi', area: 'Saket', city: 'Delhi', state: 'Delhi' },
-  { lat: 19.0760, lng: 72.8777, address: 'Dharavi, Mumbai', area: 'Dharavi', city: 'Mumbai', state: 'Maharashtra' },
-  { lat: 26.8467, lng: 80.9462, address: 'Aminabad, Lucknow', area: 'Aminabad', city: 'Lucknow', state: 'Uttar Pradesh' },
-  { lat: 24.8333, lng: 92.7789, address: 'Tarapur, Silchar', area: 'Tarapur', city: 'Silchar', state: 'Assam' },
-  { lat: 25.6117, lng: 85.1439, address: 'Rajendra Nagar, Patna', area: 'Rajendra Nagar', city: 'Patna', state: 'Bihar' },
+  { lat: 19.0760, lng: 72.8777, address: 'Dharavi, Mumbai', area: 'Dharavi', city: 'Mumbai', state: 'Maharashtra' }
 ]
 
+const SOURCES = ['Direct Observation', 'Local Resident', 'Social Media', 'News/Media']
+
 const SAMPLE_REPORTS = [
-  "Sector 8 ke paas 3 elderly logon ko diabetes medicine chahiye by tonight, flood water ki wajah se transport nahi hai, ek person sirf Hindi bolta hai.",
-  "Darbhanga mein baadh se 15 parivaar phaṁse hain. Bachche aur pregnant women hain. ORS aur peene ka paani chahiye urgently.",
-  "Dharavi mein ek wheelchair user hai jinko hospital jaana hai, dialysis appointment hai aaj 2 bje.",
-  "Panbazar relief camp mein 200 log hain. Khana packets khatam. Sanitary napkins aur diapers chahiye.",
+  "Sector 8 ke paas 3 elderly logon ko diabetes medicine chahiye by tonight, flood water ki wajah se transport nahi hai, ek person sirf Hindi bolta hai."
 ]
 
 const AI_STEPS = [
@@ -50,16 +43,64 @@ export default function ReportIntake() {
 
   const [rawText, setRawText] = useState('')
   const [selectedLocation, setSelectedLocation] = useState<GeoLocation | null>(null)
-  const [urgencyHint, setUrgencyHint] = useState<Urgency | null>(null)
   const [showLocationPicker, setShowLocationPicker] = useState(false)
+  const [isLocating, setIsLocating] = useState(false)
+  
+  const [source, setSource] = useState(SOURCES[0])
+  const [showSourcePicker, setShowSourcePicker] = useState(false)
+  const [photoUploaded, setPhotoUploaded] = useState(false)
 
   // AI Processing states
   const [isProcessing, setIsProcessing] = useState(false)
   const [aiStep, setAiStep] = useState(0)
   const [isSubmitted, setIsSubmitted] = useState(false)
-  const [submittedReportId, setSubmittedReportId] = useState<string | null>(null)
 
-  const canSubmit = rawText.trim().length > 10 && selectedLocation
+  const handleDetectLocation = () => {
+    setIsLocating(true)
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+          const data = await res.json();
+          
+          const address = data.display_name || 'Detected Location';
+          const city = data.address?.city || data.address?.town || data.address?.county || 'Unknown City';
+          const state = data.address?.state || 'Unknown State';
+          const area = data.address?.suburb || data.address?.neighbourhood || 'Unknown Area';
+
+          setSelectedLocation({
+            lat: latitude,
+            lng: longitude,
+            address: address,
+            area: area,
+            city: city,
+            state: state
+          });
+        } catch (err) {
+          setSelectedLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            address: 'Current Location',
+            area: 'Unknown',
+            city: 'Unknown',
+            state: 'Unknown'
+          });
+        }
+        setIsLocating(false)
+        setShowLocationPicker(false)
+      }, (error) => {
+        console.error(error);
+        setIsLocating(false);
+        alert('Could not fetch location. Please ensure location permissions are granted.');
+      });
+    } else {
+      alert('Geolocation is not supported by your browser');
+      setIsLocating(false)
+    }
+  }
+
+  const canSubmit = rawText.trim().length > 0 && selectedLocation !== null
 
   const handleSubmit = async () => {
     if (!canSubmit || !user || !selectedLocation) return
@@ -73,272 +114,287 @@ export default function ReportIntake() {
       await new Promise(r => setTimeout(r, 400 + Math.random() * 300))
     }
 
-    // Run AI extraction
-    const extractedNeed = await extractNeedFromReport(rawText, selectedLocation)
+    try {
+      // Run AI extraction
+      const extractedNeed = await extractNeedFromReport(rawText, selectedLocation)
 
-    const reportId = `r_${Date.now()}`
-    const newReport: Report = {
-      id: reportId,
-      rawText,
-      location: selectedLocation,
-      submittedBy: user.id,
-      submittedByName: user.name,
-      timestamp: new Date().toISOString(),
-      status: ReportStatus.EXTRACTED,
-      urgencyHint: urgencyHint || undefined,
-      language: 'hinglish',
-      extractedNeed,
+      const reportId = `r_${Date.now()}`
+      const newReport: Report = {
+        id: reportId,
+        rawText,
+        location: selectedLocation,
+        submittedBy: user.id,
+        submittedByName: user.name,
+        timestamp: new Date().toISOString(),
+        status: ReportStatus.EXTRACTED,
+        language: 'hinglish',
+        extractedNeed,
+      }
+
+      store.addReport(newReport)
+      store.addAuditLog({
+        id: `al_${Date.now()}`,
+        action: 'report_submitted',
+        userId: user.id,
+        userName: user.name,
+        entityType: 'report',
+        entityId: reportId,
+        timestamp: new Date().toISOString(),
+        details: `Field report submitted: ${extractedNeed.category}`,
+        aiGenerated: false,
+      })
+
+      setAiStep(AI_STEPS.length)
+      setIsProcessing(false)
+      setIsSubmitted(true)
+    } catch (error: any) {
+      console.error('Failed to extract report:', error)
+      alert(`AI Extraction Failed: ${error.message || 'Please check your Gemini API key and try again.'}`)
+      setIsProcessing(false)
     }
-
-    store.addReport(newReport)
-    store.addAuditLog({
-      id: `al_${Date.now()}`,
-      action: 'report_submitted',
-      userId: user.id,
-      userName: user.name,
-      entityType: 'report',
-      entityId: reportId,
-      timestamp: new Date().toISOString(),
-      details: `Field report submitted: ${extractedNeed.category}`,
-      aiGenerated: false,
-    })
-
-    setAiStep(AI_STEPS.length)
-    setIsProcessing(false)
-    setIsSubmitted(true)
-    setSubmittedReportId(reportId)
   }
 
-  const handleUseSample = (sample: string) => {
-    setRawText(sample)
+  const handleUseSample = () => {
+    setRawText(SAMPLE_REPORTS[0])
+    setSelectedLocation(PRESET_LOCATIONS[1])
     textareaRef.current?.focus()
   }
 
-  const handleNewReport = () => {
+  const handleReset = () => {
     setRawText('')
     setSelectedLocation(null)
-    setUrgencyHint(null)
     setIsSubmitted(false)
-    setSubmittedReportId(null)
-    setIsProcessing(false)
-    setAiStep(0)
-  }
-
-  // Success state
-  if (isSubmitted && submittedReportId) {
-    const report = store.getReport(submittedReportId)
-    const need = report?.extractedNeed
-    return (
-      <div className="p-4 sm:p-6 max-w-xl mx-auto">
-        <div className="text-center mb-6 animate-fade-in">
-          <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
-            <CheckCircle2 className="w-8 h-8 text-emerald-600" />
-          </div>
-          <h2 className="text-xl font-bold text-surface-900 mb-1">Report Submitted Successfully</h2>
-          <p className="text-sm text-surface-500">Gemini AI has extracted the following need</p>
-        </div>
-
-        {need && (
-          <div className="card p-5 mb-4 animate-slide-up">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-semibold text-surface-700">{need.category}</span>
-              <UrgencyBadge urgency={need.urgency} />
-            </div>
-            <p className="text-sm text-surface-600 mb-3">{need.summary}</p>
-            {need.summaryHindi && (
-              <p className="text-sm text-surface-500 italic mb-3 border-l-2 border-brand-200 pl-3">{need.summaryHindi}</p>
-            )}
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div>
-                <span className="text-surface-400">Affected</span>
-                <p className="font-semibold text-surface-700">{need.affectedCount} people</p>
-              </div>
-              <div>
-                <span className="text-surface-400">Urgency Score</span>
-                <p className="font-semibold text-surface-700">{need.urgencyScore}/10</p>
-              </div>
-              <div>
-                <span className="text-surface-400">Confidence</span>
-                <p className="font-semibold text-surface-700">{Math.round(need.confidence * 100)}%</p>
-              </div>
-              <div>
-                <span className="text-surface-400">Location</span>
-                <p className="font-semibold text-surface-700">{need.location.area}</p>
-              </div>
-            </div>
-            {need.vulnerableGroups.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-1">
-                {need.vulnerableGroups.map(g => (
-                  <span key={g} className="badge bg-red-50 text-red-600 border border-red-200">{g}</span>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="text-center text-xs text-surface-400 mb-4">
-          The coordinator will review this report and create an actionable task.
-        </div>
-
-        <div className="flex gap-3">
-          <button onClick={handleNewReport} className="btn-primary flex-1">
-            <Send className="w-4 h-4" /> Submit Another
-          </button>
-          <button onClick={() => navigate('/field/my-reports')} className="btn-secondary flex-1">
-            <FileText className="w-4 h-4" /> My Reports
-          </button>
-        </div>
-      </div>
-    )
   }
 
   return (
-    <div className="p-4 sm:p-6 max-w-xl mx-auto">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-surface-900">Submit Ground Report</h1>
-        <p className="text-sm text-surface-500 mt-1">Describe the need in Hindi, English, or Hinglish. Gemini AI will extract structured data.</p>
-      </div>
+    <div className="w-full">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
+        {/* Left Column: Mobile App Interface */}
+        <div>
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-0.5">Field Worker Mobile</p>
+              <h1 className="text-2xl font-extrabold text-surface-900 tracking-tight leading-none">Submit ground report</h1>
+            </div>
+            <span className="px-3 py-1 bg-[#fff1f2] text-[#be123c] rounded-full text-[10px] font-bold border border-[#fecdd3]">
+              Hinglish Ready
+            </span>
+          </div>
 
-      {/* Sample quick-fill */}
-      {!rawText && (
-        <div className="mb-4 animate-fade-in">
-          <p className="text-xs text-surface-400 font-medium mb-2">📋 Try a sample report:</p>
-          <div className="flex flex-col gap-2">
-            {SAMPLE_REPORTS.map((sample, i) => (
-              <button
-                key={i}
-                onClick={() => handleUseSample(sample)}
-                className="text-left text-xs p-3 rounded-lg bg-brand-50/50 border border-brand-100 hover:bg-brand-50 text-surface-600 transition-colors line-clamp-2"
-              >
-                "{sample.slice(0, 90)}..."
-              </button>
-            ))}
+          <div className="bg-white border border-surface-200 rounded-[2rem] p-6 shadow-sm max-w-md mx-auto relative overflow-hidden">
+            {/* Fake notch/dynamic island */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-surface-100 rounded-b-xl border border-surface-200 border-t-0 z-10"></div>
+            
+            <div className="pt-4">
+              {isSubmitted ? (
+                <div className="py-8 text-center flex flex-col items-center">
+                  <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mb-4">
+                    <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+                  </div>
+                  <h3 className="text-xl font-bold text-surface-900 mb-2">Report Processed!</h3>
+                  <p className="text-sm text-surface-500 mb-8 px-4">
+                    Gemini AI has successfully extracted the core needs from your report and sent structured data to the Coordinator Inbox for approval.
+                  </p>
+                  
+                  <div className="w-full space-y-3">
+                    <button
+                      onClick={() => navigate('/coordinator/review')}
+                      className="w-full py-3.5 bg-[#0f766e] text-white rounded-xl text-sm font-bold shadow-sm hover:bg-[#115e59] transition-all"
+                    >
+                      View in Coordinator Inbox
+                    </button>
+                    <button
+                      onClick={handleReset}
+                      className="w-full py-3.5 bg-white border border-surface-200 text-surface-700 rounded-xl text-sm font-bold shadow-sm hover:bg-surface-50 transition-all"
+                    >
+                      Submit Another Report
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+              <div className="mb-5">
+                <label className="block text-[11px] font-bold text-surface-500 uppercase tracking-wider mb-2 ml-1">Report Text</label>
+                <textarea
+                  ref={textareaRef}
+                  value={rawText}
+                  onChange={e => setRawText(e.target.value)}
+                  placeholder="Type in Hindi or English..."
+                  className="w-full h-32 px-4 py-3 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all resize-none"
+                  disabled={isProcessing}
+                />
+              </div>
+
+              <div className="mb-5">
+                <label className="block text-[11px] font-bold text-surface-500 uppercase tracking-wider mb-2 ml-1">Location</label>
+                <div className="relative">
+                  <button
+                    onClick={() => setShowLocationPicker(!showLocationPicker)}
+                    className={clsx(
+                      'w-full px-4 py-3 bg-surface-50 border border-surface-200 rounded-xl text-sm text-left flex items-center justify-between transition-all',
+                      selectedLocation ? 'text-surface-900 font-semibold' : 'text-surface-400'
+                    )}
+                    disabled={isProcessing}
+                  >
+                    <span className="truncate">{selectedLocation ? selectedLocation.address : 'Select location...'}</span>
+                    <ChevronDown className={clsx('w-4 h-4 transition-transform', showLocationPicker && 'rotate-180')} />
+                  </button>
+                  {showLocationPicker && (
+                    <div className="absolute top-full left-0 w-full mt-1 bg-white border border-surface-200 rounded-xl shadow-lg max-h-60 overflow-y-auto z-20">
+                      <button
+                        onClick={handleDetectLocation}
+                        disabled={isLocating}
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-brand-50 transition-colors border-b border-surface-200 text-brand-600 font-bold flex items-center gap-2"
+                      >
+                        <MapPin className="w-4 h-4" />
+                        {isLocating ? 'Detecting...' : 'Detect My Location'}
+                      </button>
+                      {PRESET_LOCATIONS.map((loc, i) => (
+                        <button
+                          key={i}
+                          onClick={() => { setSelectedLocation(loc); setShowLocationPicker(false) }}
+                          className={clsx(
+                            'w-full text-left px-4 py-3 text-sm hover:bg-surface-50 transition-colors border-b border-surface-100 last:border-0',
+                            selectedLocation?.address === loc.address && 'bg-brand-50 text-brand-700 font-bold'
+                          )}
+                        >
+                          {loc.area}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                <div className="relative">
+                  <label className="block text-[11px] font-bold text-surface-500 uppercase tracking-wider mb-2 ml-1">Source</label>
+                  <button
+                    onClick={() => setShowSourcePicker(!showSourcePicker)}
+                    className="w-full px-4 py-3 bg-surface-50 border border-surface-200 rounded-xl text-sm font-semibold text-surface-700 flex items-center justify-between transition-all hover:bg-surface-100"
+                    disabled={isProcessing}
+                  >
+                    <span className="truncate">{source}</span>
+                    <ChevronDown className={clsx('w-3 h-3 transition-transform text-surface-400', showSourcePicker && 'rotate-180')} />
+                  </button>
+                  {showSourcePicker && (
+                    <div className="absolute top-full left-0 w-full mt-1 bg-white border border-surface-200 rounded-xl shadow-lg overflow-hidden z-20">
+                      {SOURCES.map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => { setSource(s); setShowSourcePicker(false) }}
+                          className={clsx(
+                            'w-full text-left px-4 py-2.5 text-sm hover:bg-surface-50 transition-colors border-b border-surface-100 last:border-0',
+                            source === s && 'bg-brand-50 text-brand-700 font-bold'
+                          )}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-surface-500 uppercase tracking-wider mb-2 ml-1">Photo (Optional)</label>
+                  <button 
+                    onClick={() => {
+                      setPhotoUploaded(true);
+                      setTimeout(() => setPhotoUploaded(false), 2000);
+                    }}
+                    className={clsx(
+                      "w-full px-4 py-3 border rounded-xl text-sm font-semibold text-center transition-colors",
+                      photoUploaded 
+                        ? "bg-emerald-50 border-emerald-200 text-emerald-600" 
+                        : "bg-surface-50 border-surface-200 text-brand-600 hover:bg-brand-50"
+                    )}
+                    disabled={isProcessing}
+                  >
+                    {photoUploaded ? <span className="flex items-center justify-center gap-1"><CheckCircle2 className="w-4 h-4"/> Attached</span> : '+ Upload'}
+                  </button>
+                </div>
+              </div>
+
+              {isProcessing ? (
+                <div className="mb-4">
+                  <AIProcessingCard step={aiStep} steps={AI_STEPS} />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <button
+                    onClick={handleSubmit}
+                    disabled={!canSubmit}
+                    className="w-full py-3.5 bg-[#0f766e] text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-[#115e59] transition-all shadow-sm disabled:opacity-50"
+                  >
+                    Run Gemini extraction <Send className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={handleUseSample}
+                    className="w-full py-3.5 bg-white border border-surface-200 text-surface-700 rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-surface-50 transition-all shadow-sm"
+                  >
+                    Load flood sample
+                  </button>
+                </div>
+              )}
+              </>
+              )}
+            </div>
           </div>
         </div>
-      )}
 
-      {/* Report Text */}
-      <div className="mb-4">
-        <label className="label flex items-center gap-1">
-          <FileText className="w-3.5 h-3.5" />
-          Field Report
-          <span className="badge bg-blue-50 text-blue-600 text-[10px] ml-1">Hindi/English/Hinglish</span>
-        </label>
-        <textarea
-          ref={textareaRef}
-          value={rawText}
-          onChange={e => setRawText(e.target.value)}
-          placeholder="क्या मदद चाहिए? कहाँ? कितने लोग? कोई खास ज़रूरत?&#10;&#10;Example: Sector 8 ke paas 3 elderly logon ko diabetes medicine chahiye by tonight..."
-          className="textarea h-32 sm:h-40"
-          disabled={isProcessing}
-        />
-        <div className="flex items-center justify-between mt-1.5">
-          <span className={clsx('text-xs', rawText.length > 10 ? 'text-surface-400' : 'text-amber-500')}>
-            {rawText.length > 10 ? `${rawText.length} characters` : 'Minimum 10 characters'}
-          </span>
-          <div className="flex gap-1.5">
-            <button className="btn-ghost btn-sm" title="Voice input (coming soon)" disabled>
-              <Mic className="w-3.5 h-3.5" /> Voice
-            </button>
+        {/* Right Column: Live Product Contract */}
+        <div>
+          <div className="mb-8">
+            <p className="text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-0.5">Live Product Contract</p>
+            <h2 className="text-xl font-extrabold text-surface-900 tracking-tight leading-none">Messy report to approved task</h2>
+          </div>
+          
+          <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-surface-200 before:to-transparent">
+            
+            <div className="relative flex items-start gap-4 z-10">
+              <div className="w-10 h-10 rounded-full bg-surface-100 border-4 border-white flex items-center justify-center text-sm font-extrabold text-surface-600 shrink-0 shadow-sm">1</div>
+              <div className="pt-2">
+                <h3 className="text-sm font-extrabold text-surface-900 mb-1">Report arrives from field</h3>
+                <p className="text-xs font-semibold text-surface-500 leading-relaxed">Worker types in Hinglish or regional language via app/WhatsApp.</p>
+              </div>
+            </div>
+
+            <div className="relative flex items-start gap-4 z-10">
+              <div className="w-10 h-10 rounded-full bg-brand-100 border-4 border-white flex items-center justify-center text-sm font-extrabold text-brand-700 shrink-0 shadow-sm">2</div>
+              <div className="pt-2">
+                <h3 className="text-sm font-extrabold text-surface-900 mb-1">Gemini extracts structured data</h3>
+                <p className="text-xs font-semibold text-surface-500 leading-relaxed">AI determines category, urgency score (0-10), and spots vulnerabilities.</p>
+              </div>
+            </div>
+
+            <div className="relative flex items-start gap-4 z-10">
+              <div className="w-10 h-10 rounded-full bg-surface-100 border-4 border-white flex items-center justify-center text-sm font-extrabold text-surface-600 shrink-0 shadow-sm">3</div>
+              <div className="pt-2">
+                <h3 className="text-sm font-extrabold text-surface-900 mb-1">Vector search (planned)</h3>
+                <p className="text-xs font-semibold text-surface-500 leading-relaxed">Finds similar recent reports to prevent duplicate deployment.</p>
+              </div>
+            </div>
+
+            <div className="relative flex items-start gap-4 z-10">
+              <div className="w-10 h-10 rounded-full bg-surface-100 border-4 border-white flex items-center justify-center text-sm font-extrabold text-surface-600 shrink-0 shadow-sm">4</div>
+              <div className="pt-2">
+                <h3 className="text-sm font-extrabold text-surface-900 mb-1">Coordinator inbox</h3>
+                <p className="text-xs font-semibold text-surface-500 leading-relaxed">Human-in-the-loop approves the extracted AI need.</p>
+              </div>
+            </div>
+
+            <div className="relative flex items-start gap-4 z-10">
+              <div className="w-10 h-10 rounded-full bg-surface-100 border-4 border-white flex items-center justify-center text-sm font-extrabold text-surface-600 shrink-0 shadow-sm">5</div>
+              <div className="pt-2">
+                <h3 className="text-sm font-extrabold text-surface-900 mb-1">Task creation</h3>
+                <p className="text-xs font-semibold text-surface-500 leading-relaxed">A standardized task is created, ready for volunteer matching.</p>
+              </div>
+            </div>
+
           </div>
         </div>
+
       </div>
-
-      {/* Location Picker */}
-      <div className="mb-4">
-        <label className="label flex items-center gap-1">
-          <MapPin className="w-3.5 h-3.5" />
-          Location
-        </label>
-        <button
-          onClick={() => setShowLocationPicker(!showLocationPicker)}
-          className={clsx(
-            'input text-left flex items-center justify-between',
-            selectedLocation ? 'text-surface-900' : 'text-surface-400'
-          )}
-          disabled={isProcessing}
-        >
-          <span className="truncate">{selectedLocation ? selectedLocation.address : 'Select location...'}</span>
-          <ChevronDown className={clsx('w-4 h-4 transition-transform', showLocationPicker && 'rotate-180')} />
-        </button>
-        {showLocationPicker && (
-          <div className="mt-1 bg-white border border-surface-200 rounded-lg shadow-lg max-h-48 overflow-y-auto animate-slide-up">
-            {PRESET_LOCATIONS.map((loc, i) => (
-              <button
-                key={i}
-                onClick={() => { setSelectedLocation(loc); setShowLocationPicker(false) }}
-                className={clsx(
-                  'w-full text-left px-3 py-2.5 text-sm hover:bg-surface-50 transition-colors border-b border-surface-100 last:border-0',
-                  selectedLocation?.address === loc.address && 'bg-brand-50 text-brand-700'
-                )}
-              >
-                <span className="font-medium">{loc.area}</span>
-                <span className="text-xs text-surface-400 ml-1">• {loc.city}, {loc.state}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Urgency Hint */}
-      <div className="mb-4">
-        <label className="label flex items-center gap-1">
-          <AlertTriangle className="w-3.5 h-3.5" />
-          Urgency Hint <span className="text-surface-400 font-normal">(optional)</span>
-        </label>
-        <div className="flex gap-2 flex-wrap">
-          {Object.values(Urgency).map(u => (
-            <button
-              key={u}
-              onClick={() => setUrgencyHint(urgencyHint === u ? null : u)}
-              className={clsx('transition-all', urgencyHint === u ? 'scale-105 ring-2 ring-offset-1 ring-surface-300 rounded-full' : 'opacity-70 hover:opacity-100')}
-              disabled={isProcessing}
-            >
-              <UrgencyBadge urgency={u} />
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Image Upload (placeholder) */}
-      <div className="mb-6">
-        <label className="label flex items-center gap-1">
-          <Camera className="w-3.5 h-3.5" />
-          Photo <span className="text-surface-400 font-normal">(optional)</span>
-        </label>
-        <button className="w-full border-2 border-dashed border-surface-200 rounded-xl p-6 text-center hover:border-brand-300 hover:bg-brand-50/20 transition-colors" disabled={isProcessing}>
-          <Camera className="w-6 h-6 text-surface-300 mx-auto mb-2" />
-          <p className="text-xs text-surface-400">Tap to add field photo</p>
-        </button>
-      </div>
-
-      {/* AI Processing */}
-      {isProcessing && (
-        <div className="mb-4">
-          <AIProcessingCard step={aiStep} steps={AI_STEPS} />
-        </div>
-      )}
-
-      {/* Submit */}
-      <button
-        onClick={handleSubmit}
-        disabled={!canSubmit || isProcessing}
-        className="btn-primary w-full btn-lg"
-      >
-        {isProcessing ? (
-          <>Processing with Gemini AI...</>
-        ) : (
-          <>
-            <Send className="w-5 h-5" />
-            Submit Report
-          </>
-        )}
-      </button>
-
-      <p className="text-[10px] text-surface-400 text-center mt-3">
-        ⚠️ AI recommendations will be reviewed by a coordinator before action.
-      </p>
     </div>
   )
 }

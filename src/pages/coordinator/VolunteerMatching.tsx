@@ -7,7 +7,8 @@ import { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { store } from '@/services/store'
 import { useStore } from '@/hooks/useStore'
-import { matchVolunteers, generateVolunteerBrief } from '@/services/mockAi'
+import { matchVolunteers } from '@/services/mockAi'
+import { generateVolunteerBrief } from '@/services/gemini'
 import { Task, TaskStatus, VolunteerMatch, AssignmentStatus } from '@/types/models'
 import { UrgencyBadge, StatusChip, MatchScoreRing, LoadingSpinner, EmptyState, LanguageBadge, ConfidenceBar } from '@/components/ui'
 import {
@@ -48,51 +49,57 @@ export default function VolunteerMatching() {
     if (!selectedTask) return
     setAssigning(match.volunteer.id)
 
-    // Generate task brief
-    const taskBrief = await generateVolunteerBrief(selectedTask, match.volunteer)
+    try {
+      // Generate task brief
+      const taskBrief = await generateVolunteerBrief(selectedTask, match.volunteer)
 
-    // Create assignment
-    const assignmentId = `a_${Date.now()}`
-    store.addAssignment({
-      id: assignmentId,
-      taskId: selectedTask.id,
-      volunteerId: match.volunteer.id,
-      volunteerName: match.volunteer.name,
-      status: AssignmentStatus.APPROVED,
-      taskBrief,
-      matchScore: match.score,
-      matchReason: match.reasons.map(r => `${r.factor}: ${r.detail}`).join('; '),
-      proposedAt: new Date().toISOString(),
-    })
+      // Create assignment
+      const assignmentId = `a_${Date.now()}`
+      store.addAssignment({
+        id: assignmentId,
+        taskId: selectedTask.id,
+        volunteerId: match.volunteer.id,
+        volunteerName: match.volunteer.name,
+        status: AssignmentStatus.APPROVED,
+        taskBrief,
+        matchScore: match.score,
+        matchReason: match.reasons.map(r => `${r.factor}: ${r.detail}`).join('; '),
+        proposedAt: new Date().toISOString(),
+      })
 
-    // Update task
-    store.updateTask(selectedTask.id, {
-      status: TaskStatus.ASSIGNED,
-      assignedVolunteerId: match.volunteer.id,
-      assignedVolunteerName: match.volunteer.name,
-      taskBrief,
-    })
+      // Update task
+      store.updateTask(selectedTask.id, {
+        status: TaskStatus.ASSIGNED,
+        assignedVolunteerId: match.volunteer.id,
+        assignedVolunteerName: match.volunteer.name,
+        taskBrief,
+      })
 
-    // Update volunteer
-    store.updateVolunteer(match.volunteer.id, {
-      currentLoad: match.volunteer.currentLoad + 1,
-    })
+      // Update volunteer
+      store.updateVolunteer(match.volunteer.id, {
+        currentLoad: match.volunteer.currentLoad + 1,
+      })
 
-    // Audit log
-    store.addAuditLog({
-      id: `al_${Date.now()}`, action: 'volunteer_assigned', userId: 'u2', userName: 'Rajesh Kumar',
-      entityType: 'assignment', entityId: assignmentId, timestamp: new Date().toISOString(),
-      details: `Assigned ${match.volunteer.name} to ${selectedTask.extractedNeed.category} (${match.score}% match)`,
-      aiGenerated: false,
-    })
+      // Audit log
+      store.addAuditLog({
+        id: `al_${Date.now()}`, action: 'volunteer_assigned', userId: 'u2', userName: 'Rajesh Kumar',
+        entityType: 'assignment', entityId: assignmentId, timestamp: new Date().toISOString(),
+        details: `Assigned ${match.volunteer.name} to ${selectedTask.extractedNeed.category} (${match.score}% match)`,
+        aiGenerated: false,
+      })
 
-    setAssigning(null)
-    // Refresh
-    setSelectedTaskId(null)
-    setTimeout(() => {
-      const remaining = store.getTasks().filter(t => t.status === TaskStatus.APPROVED)
-      if (remaining.length > 0) setSelectedTaskId(remaining[0].id)
-    }, 100)
+      setAssigning(null)
+      // Refresh
+      setSelectedTaskId(null)
+      setTimeout(() => {
+        const remaining = store.getTasks().filter(t => t.status === TaskStatus.APPROVED)
+        if (remaining.length > 0) setSelectedTaskId(remaining[0].id)
+      }, 100)
+    } catch (error: any) {
+      console.error('Failed to assign volunteer:', error)
+      alert(`Assignment Failed: ${error.message || 'Please check your Gemini API key and try again.'}`)
+      setAssigning(null)
+    }
   }
 
   return (

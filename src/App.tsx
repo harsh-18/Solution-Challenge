@@ -27,12 +27,22 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function AppRoutes() {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, user } = useAuth()
+
+  const getRolePath = (role?: UserRole) => {
+    switch (role) {
+      case UserRole.FIELD_WORKER: return '/field/report'
+      case UserRole.VOLUNTEER: return '/volunteer/tasks'
+      case UserRole.ADMIN: return '/admin/settings'
+      case UserRole.COORDINATOR:
+      default: return '/coordinator'
+    }
+  }
 
   return (
     <Routes>
-      {/* Public */}
-      <Route path="/" element={isAuthenticated ? <Navigate to="/coordinator" replace /> : <LoginPage />} />
+      {/* Public / Role Switcher */}
+      <Route path="/" element={<LoginPage />} />
 
       {/* Field Worker */}
       <Route path="/field/report" element={<ProtectedRoute><ReportIntake /></ProtectedRoute>} />

@@ -1,29 +1,29 @@
 // ============================================================
 // ReliefSetu — Map View
-// Custom SVG-based India map with task/volunteer markers
+// Real Google Maps integration with @react-google-maps/api
 // ============================================================
 
-import { useState } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { store } from '@/services/store'
-import { useStore } from '@/hooks/useStore'
-import { Urgency, TaskStatus } from '@/types/models'
+import { Urgency } from '@/types/models'
 import { UrgencyBadge, StatusChip } from '@/components/ui'
-import { MapPin, Users, X, Layers, Filter, Activity } from 'lucide-react'
+import { Users, X } from 'lucide-react'
 import clsx from 'clsx'
+import { GoogleMap, useJsApiLoader, MarkerF, InfoWindowF } from '@react-google-maps/api'
 
-// Simple projected coordinates for Indian cities (scaled to viewport)
-const CITY_COORDS: Record<string, { x: number, y: number }> = {
-  'Darbhanga': { x: 670, y: 240 },
-  'Patna': { x: 640, y: 260 },
-  'Delhi': { x: 460, y: 200 },
-  'Guwahati': { x: 750, y: 240 },
-  'Silchar': { x: 770, y: 280 },
-  'Mumbai': { x: 380, y: 420 },
-  'Lucknow': { x: 530, y: 250 },
-  'Kolkata': { x: 680, y: 340 },
-  'Chennai': { x: 530, y: 540 },
-  'Jaipur': { x: 420, y: 250 },
-  'Bhopal': { x: 470, y: 320 },
+// We map city names to coordinates. In a real app, the models would store LatLng.
+const CITY_COORDS: Record<string, { lat: number, lng: number }> = {
+  'Darbhanga': { lat: 26.1542, lng: 85.8918 },
+  'Patna': { lat: 25.5941, lng: 85.1376 },
+  'Delhi': { lat: 28.6139, lng: 77.2090 },
+  'Guwahati': { lat: 26.1445, lng: 91.7362 },
+  'Silchar': { lat: 24.8333, lng: 92.7789 },
+  'Mumbai': { lat: 19.0760, lng: 72.8777 },
+  'Lucknow': { lat: 26.8467, lng: 80.9462 },
+  'Kolkata': { lat: 22.5726, lng: 88.3639 },
+  'Chennai': { lat: 13.0827, lng: 80.2707 },
+  'Jaipur': { lat: 26.9124, lng: 75.7873 },
+  'Bhopal': { lat: 23.2599, lng: 77.4126 },
 }
 
 const URGENCY_COLORS: Record<string, string> = {
@@ -33,6 +33,8 @@ const URGENCY_COLORS: Record<string, string> = {
   low: '#10b981',
 }
 
+const LIBRARIES: ("places" | "geometry" | "drawing" | "visualization")[] = ['places'];
+
 export default function MapView() {
   const tasks = store.getTasks()
   const volunteers = store.getVolunteers()
@@ -40,15 +42,55 @@ export default function MapView() {
   const [showVolunteers, setShowVolunteers] = useState(true)
   const [urgencyFilter, setUrgencyFilter] = useState<string>('all')
 
+  const { isLoaded, loadError } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
+    libraries: LIBRARIES
+  })
+
+  const mapCenter = useMemo(() => ({ lat: 22.5937, lng: 78.9629 }), []) // Center on India
+  
+  const [map, setMap] = useState<google.maps.Map | null>(null)
+
+  const onLoad = useCallback(function callback(map: google.maps.Map) {
+    setMap(map)
+  }, [])
+
+  const onUnmount = useCallback(function callback(map: google.maps.Map) {
+    setMap(null)
+  }, [])
+
   const filteredTasks = urgencyFilter === 'all' ? tasks : tasks.filter(t => t.extractedNeed.urgency === urgencyFilter)
   const selected = selectedTask ? store.getTask(selectedTask) : null
+
+  // Map Snazzy Map style for the aesthetic
+  const mapStyle = [
+    { elementType: "geometry", stylers: [{ color: "#f5f5f5" }] },
+    { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+    { elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
+    { elementType: "labels.text.stroke", stylers: [{ color: "#f5f5f5" }] },
+    { featureType: "administrative.land_parcel", elementType: "labels.text.fill", stylers: [{ color: "#bdbdbd" }] },
+    { featureType: "poi", elementType: "geometry", stylers: [{ color: "#eeeeee" }] },
+    { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
+    { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#e5e5e5" }] },
+    { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#9e9e9e" }] },
+    { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
+    { featureType: "road.arterial", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
+    { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#dadada" }] },
+    { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
+    { featureType: "road.local", elementType: "labels.text.fill", stylers: [{ color: "#9e9e9e" }] },
+    { featureType: "transit.line", elementType: "geometry", stylers: [{ color: "#e5e5e5" }] },
+    { featureType: "transit.station", elementType: "geometry", stylers: [{ color: "#eeeeee" }] },
+    { featureType: "water", elementType: "geometry", stylers: [{ color: "#c9c9c9" }] },
+    { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#9e9e9e" }] }
+  ]
 
   return (
     <div className="h-[calc(100vh-120px)] lg:h-[calc(100vh-40px)] flex flex-col">
       {/* Map Controls */}
       <div className="px-4 py-3 bg-white border-b border-surface-200 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h2 className="text-sm font-bold text-surface-900">Map View</h2>
+          <h2 className="text-sm font-bold text-surface-900">Live Map</h2>
           <span className="badge bg-surface-100 text-surface-500 text-[10px]">{filteredTasks.length} tasks</span>
         </div>
         <div className="flex items-center gap-2">
@@ -66,110 +108,121 @@ export default function MapView() {
         </div>
       </div>
 
-      <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-blue-50 via-teal-50/30 to-emerald-50">
-        {/* SVG Map */}
-        <svg viewBox="200 100 700 550" className="w-full h-full" style={{ minHeight: 400 }}>
-          {/* India outline (simplified) */}
-          <path
-            d="M380,130 L450,128 L480,135 L520,140 L560,138 L600,150 L650,155 L700,160 L740,165 L770,185 L790,210 L800,250 L790,280 L780,310 L760,340 L740,350 L720,370 L700,350 L680,355 L670,380 L660,400 L640,410 L620,400 L600,420 L580,440 L560,460 L540,490 L530,520 L520,550 L510,580 L500,600 L490,610 L480,600 L485,580 L490,550 L480,520 L470,500 L460,480 L440,460 L420,450 L400,440 L380,430 L360,445 L350,460 L340,480 L330,500 L320,520 L310,540 L310,560 L300,540 L305,510 L310,480 L340,430 L350,400 L360,370 L350,340 L340,310 L330,280 L340,250 L350,220 L360,190 L370,160 Z"
-            fill="none"
-            stroke="#d6d3d1"
-            strokeWidth="2"
-            opacity="0.6"
-          />
-          
-          {/* Subtle grid */}
-          {[200, 300, 400, 500, 600, 700, 800].map(x => (
-            <line key={`gx${x}`} x1={x} y1={100} x2={x} y2={650} stroke="#e7e5e4" strokeWidth="0.5" strokeDasharray="4 4" />
-          ))}
-          {[150, 250, 350, 450, 550, 650].map(y => (
-            <line key={`gy${y}`} x1={200} y1={y} x2={900} y2={y} stroke="#e7e5e4" strokeWidth="0.5" strokeDasharray="4 4" />
-          ))}
-
-          {/* Task markers */}
-          {filteredTasks.map(task => {
-            const city = task.extractedNeed.location.city
-            const coords = CITY_COORDS[city]
-            if (!coords) return null
-            const color = URGENCY_COLORS[task.extractedNeed.urgency] || '#78716c'
-            const isSelected = selectedTask === task.id
-
-            return (
-              <g key={task.id} onClick={() => setSelectedTask(isSelected ? null : task.id)} className="cursor-pointer">
-                {/* Pulse animation for critical */}
-                {task.extractedNeed.urgency === Urgency.CRITICAL && (
-                  <circle cx={coords.x} cy={coords.y} r="16" fill={color} opacity="0.2">
-                    <animate attributeName="r" values="12;20;12" dur="2s" repeatCount="indefinite" />
-                    <animate attributeName="opacity" values="0.3;0.05;0.3" dur="2s" repeatCount="indefinite" />
-                  </circle>
-                )}
-                
-                {/* Marker */}
-                <circle cx={coords.x} cy={coords.y} r={isSelected ? 10 : 7} fill={color} stroke="white" strokeWidth="2.5"
-                  className="transition-all duration-200" opacity="0.9" />
-                
-                {/* Label */}
-                <text x={coords.x} y={coords.y - 14} textAnchor="middle" fontSize="9" fill="#44403c" fontWeight="600" fontFamily="Inter, sans-serif">
-                  {city}
-                </text>
-
-                {/* Count badge */}
-                {task.extractedNeed.affectedCount > 1 && (
-                  <>
-                    <circle cx={coords.x + 10} cy={coords.y - 8} r="7" fill="#1c1917" />
-                    <text x={coords.x + 10} y={coords.y - 5} textAnchor="middle" fontSize="7" fill="white" fontWeight="700" fontFamily="Inter, sans-serif">
-                      {task.extractedNeed.affectedCount}
-                    </text>
-                  </>
-                )}
-              </g>
-            )
-          })}
-
-          {/* Volunteer markers */}
-          {showVolunteers && volunteers.filter(v => v.isActive).map(vol => {
-            const coords = CITY_COORDS[vol.location.city]
-            if (!coords) return null
-            return (
-              <g key={vol.id}>
-                <rect x={coords.x - 5 + 15} y={coords.y - 5 + 8} width="10" height="10" rx="2" fill="#7c3aed" stroke="white" strokeWidth="1.5" opacity="0.8" />
-                <text x={coords.x + 20 + 3} y={coords.y + 8 + 6} fontSize="7" fill="#7c3aed" fontWeight="500" fontFamily="Inter, sans-serif">
-                  {vol.name.split(' ')[0]}
-                </text>
-              </g>
-            )
-          })}
-        </svg>
-
-        {/* Task Detail Panel */}
-        {selected && (
-          <div className="absolute top-4 right-4 w-80 card p-4 shadow-xl animate-slide-in-right z-10">
-            <div className="flex items-center justify-between mb-3">
-              <UrgencyBadge urgency={selected.extractedNeed.urgency} />
-              <button onClick={() => setSelectedTask(null)} className="btn-ghost btn-sm p-1"><X className="w-4 h-4" /></button>
-            </div>
-            <h3 className="text-sm font-bold text-surface-800 mb-1">{selected.extractedNeed.category}</h3>
-            <p className="text-xs text-surface-500 mb-3">{selected.extractedNeed.summary}</p>
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between"><span className="text-surface-400">Location</span><span className="font-medium">{selected.extractedNeed.location.area}, {selected.extractedNeed.location.city}</span></div>
-              <div className="flex justify-between"><span className="text-surface-400">Affected</span><span className="font-medium">{selected.extractedNeed.affectedCount} people</span></div>
-              <div className="flex justify-between"><span className="text-surface-400">Status</span><StatusChip status={selected.status} /></div>
-              {selected.assignedVolunteerName && (
-                <div className="flex justify-between"><span className="text-surface-400">Volunteer</span><span className="font-medium text-violet-600">{selected.assignedVolunteerName}</span></div>
-              )}
-            </div>
+      <div className="flex-1 relative bg-surface-100 flex items-center justify-center">
+        {loadError && (
+          <div className="text-center p-8 bg-red-50 rounded-lg text-red-600 border border-red-200 shadow-sm max-w-md">
+            <h3 className="font-bold text-lg mb-2">Map Error</h3>
+            <p className="text-sm">Google Maps failed to load. Please verify your VITE_GOOGLE_MAPS_API_KEY and ensure the Maps JavaScript API is enabled in your Google Cloud Console.</p>
           </div>
+        )}
+        
+        {!isLoaded && !loadError && (
+          <div className="w-8 h-8 rounded-full border-4 border-surface-200 border-t-brand-600 animate-spin"></div>
+        )}
+
+        {isLoaded && (
+          <GoogleMap
+            mapContainerStyle={{ width: '100%', height: '100%' }}
+            center={mapCenter}
+            zoom={5}
+            onLoad={onLoad}
+            onUnmount={onUnmount}
+            options={{
+              styles: mapStyle,
+              disableDefaultUI: true,
+              zoomControl: true,
+            }}
+          >
+            {/* Task Markers */}
+            {filteredTasks.map(task => {
+              const city = task.extractedNeed.location.city
+              const coords = CITY_COORDS[city] || task.extractedNeed.location
+              if (!coords || !coords.lat) return null
+              
+              const color = URGENCY_COLORS[task.extractedNeed.urgency] || '#78716c'
+              
+              // We create custom SVG icons for markers to keep the aesthetic
+              const svgIcon = {
+                path: google.maps.SymbolPath.CIRCLE,
+                fillColor: color,
+                fillOpacity: 0.9,
+                strokeWeight: 2,
+                strokeColor: '#ffffff',
+                scale: selectedTask === task.id ? 10 : 7,
+              }
+
+              return (
+                <MarkerF
+                  key={`task-${task.id}`}
+                  position={{ lat: coords.lat, lng: coords.lng }}
+                  icon={svgIcon}
+                  onClick={() => setSelectedTask(isSelected => isSelected === task.id ? null : task.id)}
+                />
+              )
+            })}
+
+            {/* Volunteer Markers */}
+            {showVolunteers && volunteers.filter(v => v.isActive).map(vol => {
+              const coords = CITY_COORDS[vol.location.city]
+              if (!coords || !coords.lat) return null
+              
+              const svgVolunteer = {
+                path: 'M -5,-5 5,-5 5,5 -5,5 z', // Square
+                fillColor: '#7c3aed',
+                fillOpacity: 0.8,
+                strokeWeight: 1.5,
+                strokeColor: '#ffffff',
+                scale: 1,
+              }
+
+              return (
+                <MarkerF
+                  key={`vol-${vol.id}`}
+                  position={{ lat: coords.lat + 0.1, lng: coords.lng + 0.1 }} // Slightly offset to avoid complete overlap
+                  icon={svgVolunteer}
+                  title={vol.name}
+                />
+              )
+            })}
+            
+            {/* InfoWindow for Selected Task */}
+            {selectedTask && selected && (() => {
+              const city = selected.extractedNeed.location.city
+              const coords = CITY_COORDS[city] || selected.extractedNeed.location
+              if (!coords || !coords.lat) return null
+              
+              return (
+                <InfoWindowF
+                  position={{ lat: coords.lat, lng: coords.lng }}
+                  onCloseClick={() => setSelectedTask(null)}
+                  options={{ pixelOffset: new google.maps.Size(0, -15) }}
+                >
+                  <div className="p-1 min-w-[200px]">
+                    <div className="flex items-center gap-2 mb-2">
+                      <UrgencyBadge urgency={selected.extractedNeed.urgency} size="sm" />
+                      <span className="text-xs font-bold text-surface-900 truncate">{selected.extractedNeed.category}</span>
+                    </div>
+                    <p className="text-[11px] text-surface-500 mb-2 line-clamp-2">{selected.extractedNeed.summary}</p>
+                    <div className="text-[10px] space-y-1 mt-2 border-t pt-2 border-surface-100">
+                      <div className="flex justify-between"><span className="text-surface-400">Affected:</span><span className="font-bold">{selected.extractedNeed.affectedCount} people</span></div>
+                      <div className="flex justify-between"><span className="text-surface-400">Status:</span><StatusChip status={selected.status} /></div>
+                    </div>
+                  </div>
+                </InfoWindowF>
+              )
+            })()}
+          </GoogleMap>
         )}
 
         {/* Legend */}
-        <div className="absolute bottom-4 left-4 card p-3 text-xs">
-          <p className="font-semibold text-surface-600 mb-2">Legend</p>
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-600"></span> Critical</div>
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-amber-500"></span> High</div>
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500"></span> Medium</div>
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-emerald-500"></span> Low</div>
-            {showVolunteers && <div className="flex items-center gap-2"><span className="w-3 h-3 rounded bg-violet-600"></span> Volunteer</div>}
+        <div className="absolute bottom-6 left-6 bg-white/90 backdrop-blur rounded-xl p-3 text-xs shadow-lg border border-surface-200">
+          <p className="font-bold text-surface-800 mb-2 border-b border-surface-100 pb-1">Legend</p>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-600 border border-white shadow-sm"></span> Critical</div>
+            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-amber-500 border border-white shadow-sm"></span> High</div>
+            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500 border border-white shadow-sm"></span> Medium</div>
+            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-emerald-500 border border-white shadow-sm"></span> Low</div>
+            {showVolunteers && <div className="flex items-center gap-2"><span className="w-3 h-3 rounded bg-violet-600 border border-white shadow-sm"></span> Volunteer</div>}
           </div>
         </div>
       </div>
